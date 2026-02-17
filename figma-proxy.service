@@ -1,0 +1,27 @@
+[Unit]
+Description=Figma AI Proxy Server v2.0.0 (Multi-provider CORS proxy for AI APIs)
+Documentation=https://github.com/your-username/figma-ai-proxy
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/home/your-username/apps/figma-ai-proxy
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=figma-ai-proxy
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/your-username/apps/figma-ai-proxy
+
+[Install]
+WantedBy=multi-user.target
