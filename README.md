@@ -44,7 +44,7 @@ AI Provider (OpenAI, Claude, Gemini, etc.) ✅
 ### Install & Run
 
 ```bash
-git clone https://github.com/your-username/figma-ai-proxy.git
+git clone https://github.com/uixray/figma-ai-proxy.git
 cd figma-ai-proxy
 npm install
 cp .env.example .env
@@ -99,7 +99,7 @@ Proxy requests to AI providers. The proxy transparently forwards request body an
 ### Yandex Cloud
 
 ```javascript
-const response = await fetch('https://proxy.yourdomain.com/api/yandex', {
+const response = await fetch('https://proxy.uixray.tech/api/yandex', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -116,7 +116,7 @@ const response = await fetch('https://proxy.yourdomain.com/api/yandex', {
 ### Anthropic Claude
 
 ```javascript
-const response = await fetch('https://proxy.yourdomain.com/api/claude/messages', {
+const response = await fetch('https://proxy.uixray.tech/api/claude/messages', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -134,7 +134,7 @@ const response = await fetch('https://proxy.yourdomain.com/api/claude/messages',
 ### Groq / Mistral (OpenAI-compatible)
 
 ```javascript
-const response = await fetch('https://proxy.yourdomain.com/api/groq/chat/completions', {
+const response = await fetch('https://proxy.uixray.tech/api/groq/chat/completions', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -152,7 +152,7 @@ const response = await fetch('https://proxy.yourdomain.com/api/groq/chat/complet
 ### Google Gemini
 
 ```javascript
-const response = await fetch('https://proxy.yourdomain.com/api/gemini/models/gemini-2.0-flash:generateContent?key=YOUR_KEY', {
+const response = await fetch('https://proxy.uixray.tech/api/gemini/models/gemini-2.0-flash:generateContent?key=YOUR_KEY', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -165,7 +165,7 @@ const response = await fetch('https://proxy.yourdomain.com/api/gemini/models/gem
 ### Cohere
 
 ```javascript
-const response = await fetch('https://proxy.yourdomain.com/api/cohere/chat', {
+const response = await fetch('https://proxy.uixray.tech/api/cohere/chat', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -206,16 +206,16 @@ pm2 restart figma-ai-proxy # Restart
 ```nginx
 server {
     listen 80;
-    server_name proxy.yourdomain.com;
+    server_name proxy.uixray.tech;
     return 301 https://$server_name$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name proxy.yourdomain.com;
+    server_name proxy.uixray.tech;
 
-    ssl_certificate /etc/letsencrypt/live/proxy.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/proxy.yourdomain.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/proxy.uixray.tech/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/proxy.uixray.tech/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
     location / {
@@ -236,7 +236,7 @@ server {
 
 ```bash
 sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d proxy.yourdomain.com
+sudo certbot --nginx -d proxy.uixray.tech
 sudo certbot renew --dry-run
 ```
 

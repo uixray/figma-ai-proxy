@@ -1,6 +1,6 @@
 [Unit]
 Description=Figma AI Proxy Server v2.0.0 (Multi-provider CORS proxy for AI APIs)
-Documentation=https://github.com/your-username/figma-ai-proxy
+Documentation=https://github.com/uixray/figma-ai-proxy
 After=network.target
 
 [Service]

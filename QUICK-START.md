@@ -1,114 +1,84 @@
-# 🚀 Quick Start Guide
+# Quick Start
 
-## Для Yandex Cloud VM
-
-### 1. Скачай на сервер
+## Install & Run
 
 ```bash
-ssh your-user@your-server.com
-cd ~/apps
-git clone https://github.com/your-username/figma-yandex-proxy.git
-cd figma-yandex-proxy
+git clone https://github.com/uixray/figma-ai-proxy.git
+cd figma-ai-proxy
+npm install
+cp .env.example .env
+npm start
 ```
 
-### 2. Запусти деплой
+Server starts at `http://localhost:3001`.
+
+---
+
+## Deploy to Server (PM2)
 
 ```bash
-chmod +x deploy.sh
+# Run the deploy script
 bash deploy.sh
 ```
 
-### 3. Настрой Nginx
-
-**Вариант A: Поддомен** (например `proxy.yourdomain.com`)
+Or manually:
 
 ```bash
-sudo nano /etc/nginx/sites-available/figma-proxy
-```
-
-```nginx
-server {
-    listen 80;
-    server_name proxy.yourdomain.com;
-
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/figma-proxy /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d proxy.yourdomain.com
-```
-
-**Вариант B: Путь** (например `yourdomain.com/api/yandex-proxy`)
-
-Добавь в существующий конфиг Nginx:
-
-```nginx
-location /api/yandex-proxy {
-    rewrite ^/api/yandex-proxy/(.*)$ /$1 break;
-    proxy_pass http://localhost:3001;
-    proxy_set_header Host $host;
-}
-```
-
-### 4. Протестируй
-
-```bash
-# Через curl
-curl https://proxy.yourdomain.com/health
-
-# В браузере
-https://proxy.yourdomain.com
-```
-
-### 5. Обнови плагин
-
-В `figma-llm-plugin/src/shared/constants.ts`:
-
-```typescript
-export const YANDEX_PROXY_URL = 'https://proxy.yourdomain.com/api/yandex';
+npm install -g pm2
+pm2 start server.js --name "figma-ai-proxy" --time
+pm2 save
+pm2 startup
 ```
 
 ---
 
-## Управление
+## Update on Server
 
 ```bash
-# Статус
-pm2 status
+cd ~/apps/figma-ai-proxy && git pull && npm install && pm2 restart figma-ai-proxy
+```
 
-# Логи
-pm2 logs figma-proxy
+---
 
-# Перезапуск
-pm2 restart figma-proxy
+## Test
 
-# Остановка
-pm2 stop figma-proxy
+```bash
+# Structural tests (no API keys needed)
+node test.js
+
+# Test specific provider with real API key (set key in test.js first)
+node test.js groq
+node test.js claude groq
+node test.js all
 ```
 
 ---
 
 ## Endpoints
 
-- `GET /` - Web UI для тестирования
-- `GET /health` - Health check
-- `GET /api/info` - API документация
-- `POST /api/yandex` - Основной прокси
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Web UI — interactive API tester |
+| `GET /health` | Health check |
+| `GET /api/info` | Full API documentation |
+| `POST /api/yandex` | Yandex Cloud proxy |
+| `POST /api/claude/*` | Anthropic Claude proxy |
+| `POST /api/gemini/*` | Google Gemini proxy |
+| `POST /api/groq/*` | Groq proxy |
+| `POST /api/mistral/*` | Mistral AI proxy |
+| `POST /api/cohere/*` | Cohere proxy |
 
 ---
 
-## Полная документация
+## PM2 Commands
 
-- [README.md](README.md) - Полная документация
-- [SETUP-YANDEX-CLOUD.md](SETUP-YANDEX-CLOUD.md) - Детальная настройка для твоего случая
+```bash
+pm2 status                  # Status
+pm2 logs figma-ai-proxy     # Logs
+pm2 restart figma-ai-proxy  # Restart
+pm2 stop figma-ai-proxy     # Stop
+```
 
 ---
 
-Готово! 🎉
+Full documentation: [README.md](README.md)
