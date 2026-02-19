@@ -1,0 +1,9 @@
+name = "ai-api-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Free plan: 100,000 requests/day
+# Workers have 30-second CPU time limit (sufficient for proxying)
+
+# AUTH_TOKEN is set via: npx wrangler secret put AUTH_TOKEN
+# Do NOT put secrets in this file

@@ -17,6 +17,15 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { fetch: undiciFetch, ProxyAgent } = require('undici');
+
+// Optional SOCKS5 support
+let socksDispatcher;
+try {
+  socksDispatcher = require('fetch-socks').socksDispatcher;
+} catch {
+  socksDispatcher = null;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -106,6 +115,89 @@ const PROVIDERS = {
 };
 
 // =====================================================================
+// PROXY CONFIGURATION
+// =====================================================================
+
+/**
+ * Proxy types:
+ *   'worker'  — Cloudflare Worker (URL scheme: worker://host)
+ *   'http'    — HTTP/HTTPS proxy via undici ProxyAgent
+ *   'socks5'  — SOCKS5 proxy via fetch-socks
+ *   null      — direct connection (no proxy)
+ *
+ * Priority: PROXY_{PROVIDER} > PROXY_URL > null (direct)
+ * Special value "direct" forces direct connection even if global proxy is set.
+ */
+function resolveProxyConfig(providerKey) {
+  const envKey = `PROXY_${providerKey.toUpperCase()}`;
+  const perProvider = process.env[envKey];
+
+  if (perProvider === 'direct') return null;
+
+  const raw = (perProvider && perProvider.trim()) || (process.env.PROXY_URL && process.env.PROXY_URL.trim()) || null;
+  if (!raw) return null;
+
+  // Determine proxy type from URL scheme
+  if (raw.startsWith('worker://')) {
+    return { type: 'worker', url: 'https://' + raw.slice('worker://'.length) };
+  }
+  if (raw.startsWith('socks5://') || raw.startsWith('socks4://') || raw.startsWith('socks://')) {
+    return { type: 'socks5', url: raw };
+  }
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    return { type: 'http', url: raw };
+  }
+
+  console.warn(`[PROXY] Unknown scheme in proxy URL: ${raw}`);
+  return null;
+}
+
+function createProxyDispatcher(config) {
+  if (!config || config.type === 'worker') return null;
+
+  if (config.type === 'socks5') {
+    if (!socksDispatcher) {
+      console.warn('[PROXY] SOCKS proxy configured but fetch-socks is not installed.');
+      console.warn('[PROXY] Install it: npm install fetch-socks');
+      console.warn('[PROXY] Falling back to direct connection.');
+      return null;
+    }
+    const url = new URL(config.url);
+    return socksDispatcher({
+      type: url.protocol === 'socks4:' ? 4 : 5,
+      host: url.hostname,
+      port: parseInt(url.port, 10) || 1080,
+      ...(url.username && { userId: decodeURIComponent(url.username) }),
+      ...(url.password && { password: decodeURIComponent(url.password) }),
+    });
+  }
+
+  // HTTP/HTTPS proxy
+  const url = new URL(config.url);
+  const opts = { uri: config.url };
+  if (url.username && url.password) {
+    opts.token = `Basic ${Buffer.from(
+      `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`
+    ).toString('base64')}`;
+  }
+  return new ProxyAgent(opts);
+}
+
+// Resolve proxy configs at startup
+const PROXY_CONFIGS = {};
+const PROXY_DISPATCHERS = {};
+for (const key of Object.keys(PROVIDERS)) {
+  const config = resolveProxyConfig(key);
+  if (config) {
+    PROXY_CONFIGS[key] = config;
+    const dispatcher = createProxyDispatcher(config);
+    if (dispatcher) PROXY_DISPATCHERS[key] = dispatcher;
+    const label = config.type === 'worker' ? config.url : config.url.replace(/\/\/([^:]+):([^@]+)@/, '//$1:***@');
+    console.log(`[PROXY] ${key}: routing via ${config.type} → ${label}`);
+  }
+}
+
+// =====================================================================
 // VALIDATION FUNCTIONS
 // =====================================================================
 
@@ -167,6 +259,38 @@ function validateYandexRequest(req) {
 // =====================================================================
 // HELPER FUNCTIONS
 // =====================================================================
+
+/**
+ * Execute a fetch request, optionally through a proxy.
+ * - worker: sends to CF Worker with X-Target-URL header
+ * - http/socks5: uses undici fetch with dispatcher
+ * - direct: uses native fetch
+ */
+async function proxyFetch(url, options, providerKey) {
+  const config = PROXY_CONFIGS[providerKey];
+
+  if (config && config.type === 'worker') {
+    // Cloudflare Worker proxy: send to worker URL with target in headers
+    const workerHeaders = { ...options.headers };
+    workerHeaders['X-Target-URL'] = url;
+    const authToken = process.env.PROXY_AUTH_TOKEN;
+    if (authToken) {
+      workerHeaders['X-Auth-Token'] = authToken;
+    }
+    return undiciFetch(config.url, {
+      ...options,
+      headers: workerHeaders,
+    });
+  }
+
+  const dispatcher = PROXY_DISPATCHERS[providerKey];
+  if (dispatcher) {
+    return undiciFetch(url, { ...options, dispatcher });
+  }
+
+  // Direct connection
+  return fetch(url, options);
+}
 
 /**
  * Build the target URL for the upstream API.
@@ -233,6 +357,14 @@ function handleProxyError(res, error, startTime, provider) {
       error: 'Gateway Timeout',
       message: `Request to ${provider.name} API timed out`,
       hint: 'Try again or check the provider status',
+    });
+  }
+
+  if (error.message.includes('ECONNREFUSED') && error.message.includes('proxy')) {
+    return res.status(502).json({
+      error: 'Proxy Connection Failed',
+      message: `Unable to connect to proxy for ${provider.name}`,
+      hint: 'Check that the proxy server is running and accessible',
     });
   }
 
@@ -312,12 +444,24 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
+  const proxyStatus = {};
+  for (const key of Object.keys(PROVIDERS)) {
+    const config = PROXY_CONFIGS[key];
+    if (config) {
+      const masked = config.url.replace(/\/\/([^:]+):([^@]+)@/, '//$1:***@');
+      proxyStatus[key] = `${config.type} → ${masked}`;
+    } else {
+      proxyStatus[key] = 'direct';
+    }
+  }
+
   res.json({
     status: 'ok',
     service: 'figma-ai-proxy',
     version: VERSION,
     uptime: process.uptime(),
     providers: Object.keys(PROVIDERS),
+    proxy: proxyStatus,
   });
 });
 
@@ -423,12 +567,12 @@ async function proxyRequest(req, res) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
-    const response = await fetch(targetUrl, {
+    const response = await proxyFetch(targetUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(req.body),
       signal: controller.signal,
-    });
+    }, providerKey);
 
     clearTimeout(timeout);
 
@@ -502,7 +646,11 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   const providerList = Object.entries(PROVIDERS)
-    .map(([key, config]) => `  ${key.padEnd(10)} → ${config.name}`)
+    .map(([key, config]) => {
+      const proxy = PROXY_CONFIGS[key];
+      const tag = proxy ? ` [via ${proxy.type}]` : '';
+      return `  ${key.padEnd(10)} → ${config.name}${tag}`;
+    })
     .join('\n');
 
   console.log('');

@@ -240,6 +240,64 @@ sudo certbot --nginx -d proxy.uixray.tech
 sudo certbot renew --dry-run
 ```
 
+## Proxy Tunneling (bypass regional restrictions)
+
+If an AI provider (e.g., Gemini) blocks requests from your region, you can route outbound requests through a proxy. Three proxy types are supported:
+
+| Type | URL Scheme | Use Case |
+|------|-----------|----------|
+| **Cloudflare Worker** | `worker://host` | Free (100k req/day), no extra server needed |
+| **HTTP/HTTPS proxy** | `http://host:port` | Squid, commercial proxies |
+| **SOCKS5 proxy** | `socks5://host:port` | SSH tunnels, Dante |
+
+### Quick Setup (Cloudflare Worker)
+
+1. Deploy the included Worker: `cd cloudflare-worker && npx wrangler deploy`
+2. Set a secret token: `npx wrangler secret put AUTH_TOKEN`
+3. Add to `.env` on your server:
+
+```env
+PROXY_GEMINI=worker://ai-api-proxy.YOUR_NAME.workers.dev
+PROXY_AUTH_TOKEN=your-secret-token
+```
+
+4. Restart the server: `pm2 restart figma-ai-proxy`
+
+See [`cloudflare-worker/README.md`](cloudflare-worker/README.md) for detailed instructions.
+
+### Per-Provider Configuration
+
+Each provider can have its own proxy (or none):
+
+```env
+# Global proxy for all providers
+PROXY_URL=worker://ai-api-proxy.YOUR_NAME.workers.dev
+
+# Per-provider overrides
+PROXY_GEMINI=worker://ai-api-proxy.YOUR_NAME.workers.dev
+PROXY_CLAUDE=socks5://127.0.0.1:1080
+PROXY_YANDEX=direct   # always direct, even if PROXY_URL is set
+```
+
+Priority: `PROXY_{PROVIDER}` > `PROXY_URL` > direct connection.
+
+### Health Check with Proxy Status
+
+```bash
+curl http://localhost:3001/health
+```
+
+```json
+{
+  "status": "ok",
+  "proxy": {
+    "yandex": "direct",
+    "gemini": "worker → https://ai-api-proxy.YOUR_NAME.workers.dev",
+    "claude": "direct"
+  }
+}
+```
+
 ## Architecture
 
 The proxy uses a **config-driven architecture** — a single generic handler routes requests based on provider configuration:
